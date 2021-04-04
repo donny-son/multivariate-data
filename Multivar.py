@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2, f, t
@@ -10,79 +11,42 @@ except Exception as e:
 
 
 class MultivariateData:
-    """Object for processing multivariate data.
+    """
+        Object for computing multivariate data
 
-    params
-    ------
-    src: input matrix of shape (n:int, p:int) where n is the sample size and p is the number of dependent variables
-        np.ndarray
+        Attributes:
+            data (np.array): input data
+            n, (int):
+            p (int):
+            mean_vector (np.array):
+            covariance_matrix (np.array):
 
-    methods
-    -------
-    _get_mean_vector: gets the mean vector along the features
-        np.array
-
-    _get_cov_mat: gets the covariance matrix in (p by p).
-        np.array
-
-    _generalized_squared_distance: gets list of squared distance by dimension n.
-        list
-
-    _get_qq_tuples: gets the list of tuples of the qq pair for the chisquare distribution with df=p
-        list
-
-    draw_qqplot: draws the plot by using matplotlib
-
-    hotellings_t_test: performs a Hotelling's T^2 test with a given mu vector and significance level
-        float
-        
-    confidence_ellipsoid_info: Calculates the axis and the length of the ellipsoide of the multivariate data given a significance level.
-        dict
-    
-    simultaneous_confidence_interval: Calculates the simultaneous confidence interval given a transformation vector
-        tuple
+        Args:
+            inputdata (np.array, list, tuple, ...): any iterable object that numpy supports
     """
 
-    def __init__(self, src) -> None:
-        self.src = self._numpy_coersion(src)
-        self.n, self.p = self.src.shape
-        self.mean_vector = self._get_mean_vector()
-        self.cov_matrix = self._get_cov_mat()
+    def __init__(self, inputdata) -> None:
+        self.data = np.array(inputdata)
+        self.n, self.p = self.data.shape
+        self.mean_vector = np.mean(self.data, axis=0)
+        self.covariance_matrix = np.cov(self.data.transpose())
 
-    @staticmethod
-    def _numpy_coersion(data) -> np.array:
-        # coerce pandas or other iterative data to numpy array.
-        if not isinstance(data, np.ndarray):
-            try:
-                result = np.array(data)
-            except Exception as e:
-                print(
-                    f"{data.__class__} cannot be coerced to Numpy array!\nERROR:{e}")
-            return result
-        else:
-            return data
+    def __repr__(self) -> str:
+        return f"MultivariateData(SampleSize:{self.n}, Features:{self.p})"
 
-    def _get_mean_vector(self) -> np.array:
-        return (np.mean(self.src, axis=0))
-
-    def _get_cov_mat(self) -> np.array:
-        result = np.cov(self.src.transpose())
-        assert result.shape == (self.p, self.p)
-        return result
-
-    def _generalized_squared_distance(self) -> list:
+    def generalized_squared_distance(self) -> list:
         result = []
-        inv_cov = np.linalg.inv(self.cov_matrix)
-        for row in self.src:
+        inv_cov = np.linalg.inv(self.covariance_matrix)
+        for row in self.data:
             diff = row - self.mean_vector
             # numpy broadcasting
             result.append(np.matmul(np.matmul(diff, inv_cov), diff))
         assert len(result) == self.n
         return result
 
-    def _get_qq_tuples(self) -> list:
+    def __get_qq_tuples(self) -> list:
         result = []
-        sorted_general_distance = sorted(self._generalized_squared_distance())
+        sorted_general_distance = sorted(self.generalized_squared_distance())
         for i, x in enumerate(sorted_general_distance):
             x_probability_value = (i+1 - 0.5) / self.n
             q_value = chi2.ppf(x_probability_value, self.p)
@@ -91,8 +55,14 @@ class MultivariateData:
             )
         return result
 
-    def draw_qqplot(self, terminal=False):
-        qq_tuples = self._get_qq_tuples()
+    def qqplot(self, terminal=False):
+        """Draws qqplot for Multivariate Data
+
+        Args:
+            terminal (bool, optional): [Option for drawing the qqplot in terminal].
+            If False -> draws via matplotlib
+        """
+        qq_tuples = self.__get_qq_tuples()
         x = [x for x, _ in qq_tuples]
         y = [y for _, y in qq_tuples]
         if terminal:
@@ -114,7 +84,7 @@ class MultivariateData:
         assert (isinstance(mu_vector_null, list)
                 or isinstance(mu_vector_null, np.ndarray))
         assert (0 < significance < 1)
-        inv_cov = np.linalg.inv(self.cov_matrix)
+        inv_cov = np.linalg.inv(self.covariance_matrix)
         diff = self.mean_vector - mu_vector_null
         t_2_statistic = self.n * np.matmul(np.matmul(diff, inv_cov), diff)
         critical_value = ((self.n - 1) * self.p)/(self.n-self.p) * \
@@ -154,7 +124,7 @@ class MultivariateData:
                   length denotes the length of the axis.
         """
         result = {}
-        eigenvalues, eigenvectors = np.linalg.eig(self.cov_matrix)
+        eigenvalues, eigenvectors = np.linalg.eig(self.covariance_matrix)
         for i, v in enumerate(eigenvalues):
             conf_half_len = np.sqrt(v) * np.sqrt((self.n - 1) * self.p * f.ppf(
                 significance, self.p, self.n - self.p) / (self.n * (self.n - self.p)))
@@ -184,12 +154,12 @@ class MultivariateData:
             vec = vector
         if not large_sample:
             conf_width = np.sqrt(
-                self.p * (self.n - 1) * f.ppf(significance, self.p, self.n - self.p) * vec.dot(self.cov_matrix).dot(vec) / (self.n * (self.n - self.p)))
+                self.p * (self.n - 1) * f.ppf(significance, self.p, self.n - self.p) * vec.dot(self.covariance_matrix).dot(vec) / (self.n * (self.n - self.p)))
             t_mean = vec.dot(self.mean_vector)
             return (t_mean - conf_width, t_mean + conf_width)
         else:
             conf_width = np.sqrt(chi2.ppf(significance, self.p) *
-                                 vec.dot(self.cov_matrix).dot(vec)/self.n)
+                                 vec.dot(self.covariance_matrix).dot(vec)/self.n)
             t_mean = vec.dot(self.mean_vector)
             return (t_mean - conf_width, t_mean + conf_width)
 
@@ -214,6 +184,7 @@ if __name__ == "__main__":
     stiff.columns = ['x1', 'x2', 'x3', 'x4', 'x5']
 
     stf = MultivariateData(stiff)
+    stf.qqplot(True)
     print(stf.simultaneous_confidence_interval([1, 2, -1, -2, 0]))
     print(stf.simultaneous_confidence_interval(
         [1, 2, -1, -2, 0], large_sample=True))
