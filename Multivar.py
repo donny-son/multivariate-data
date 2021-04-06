@@ -73,7 +73,7 @@ class MultivariateData:
             plt.scatter(x, y)
             plt.show()
 
-    def hotellings_t_test(self, mu_vector_null, significance=0.05, method="p"):
+    def hotellings_t_test(self, mu_vector_null, alpha=0.05, method="p"):
         """Performs Hotellings test for mean comparison, via adjusted F distribution
 
         Args:
@@ -81,6 +81,7 @@ class MultivariateData:
             significance (float, optional): Significance level. Defaults to 0.05.
             method (str, optional): Method of testing. Either 'p' or 'critical'. Defaults to "p".
         """
+        significance = 1-alpha
         assert (isinstance(mu_vector_null, list)
                 or isinstance(mu_vector_null, np.ndarray))
         assert (0 < significance < 1)
@@ -91,14 +92,14 @@ class MultivariateData:
             f.ppf(significance, self.p, self.n - self.p)
         f_statistic = ((self.n - self.p) * t_2_statistic) / \
             ((self.n-1) * self.p)
-        p_value = 1-f.cdf(f_statistic, self.p, self.n - self.p)
+        p_value = 1 - f.cdf(f_statistic, self.p, self.n - self.p)
         print(f"---------------------HOTELLING'S T^2 TEST----------------------")
         print(
             f"Null Hypothesis:\n  Mean vector {self.mean_vector}\n  is equal to {np.array(mu_vector_null)}")
         print(f"T^2 statistic: {t_2_statistic}")
         print(f"F statistic: {f_statistic}")
 
-        print(f"Significance(alpha): {significance}")
+        print(f"Significance: {significance}")
 
         if method == 'p':
             print(f"P-value: {p_value}")
@@ -106,13 +107,13 @@ class MultivariateData:
             print(
                 f"Critical Value: {critical_value}")
 
-        if p_value < significance:
+        if p_value < alpha:
             print(f"Conclusion: REJECT the null hypothesis")
         else:
             print(f"Conclusion: DO NOT reject the null hypothesis")
         print(f"---------------------------------------------------------------")
 
-    def confidence_ellipsoid_info(self, significance=0.05) -> dict:
+    def confidence_ellipsoid_info(self, alpha=0.05) -> dict:
         """Calculates the axis and the length of the ellipsoide of the multivariate data.
 
         Args:
@@ -124,6 +125,7 @@ class MultivariateData:
                   length denotes the length of the axis.
         """
         result = {}
+        significance = 1-alpha
         eigenvalues, eigenvectors = np.linalg.eig(self.covariance_matrix)
         for i, v in enumerate(eigenvalues):
             conf_half_len = np.sqrt(v) * np.sqrt((self.n - 1) * self.p * f.ppf(
@@ -135,7 +137,7 @@ class MultivariateData:
             }
         return result
 
-    def simultaneous_confidence_interval(self, vector, significance=0.05, large_sample=False) -> tuple:
+    def simultaneous_confidence_interval(self, vector, alpha=0.05, large_sample=False) -> tuple:
         """Calculates the simultaneous confidence interval given a transformation vector and a significance level.
              The default method would be not assuming the data as a large sample.
 
@@ -147,6 +149,7 @@ class MultivariateData:
         Returns:
            tuple: (lowerbound: float, upperbound: float)
         """
+        significance = 1-alpha
         assert len(vector) == self.p
         if not isinstance(vector, np.ndarray):
             vec = np.array(vector)
@@ -174,7 +177,11 @@ if __name__ == "__main__":
     cd = MultivariateData(college_dat)
 
     # perform test
+    cd.hotellings_t_test([500, 50, 30], method='critical')
+    cd.hotellings_t_test([520, 53, 25], method='critical')
     cd.hotellings_t_test([500, 50, 30], method='p')
+    cd.hotellings_t_test([520, 53, 25], method='p')
+
     pprint.pprint(cd.confidence_ellipsoid_info())
     print(cd.simultaneous_confidence_interval([1, -2, 1]))
 
