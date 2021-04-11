@@ -31,8 +31,48 @@ class MultivariateData:
         self.mean_vector = np.mean(self.data, axis=0)
         self.covariance_matrix = np.cov(self.data.transpose())
 
+    def __sub__(self, other):
+        if isinstance(other, np.ndarray):
+            return MultivariateData(self.data - other)
+        elif isinstance(other, MultivariateData):
+            return MultivariateData(self.data - other.data)
+        else:
+            raise ValueError("Object must be np.array or MultivariateData")
+
+    def __add__(self, other):
+        if isinstance(other, np.ndarray):
+            return MultivariateData(self.data + other)
+        elif isinstance(other, MultivariateData):
+            return MultivariateData(self.data + other.data)
+        else:
+            raise ValueError("Object must be np.array or MultivariateData")
+
+    def __mul__(self, other):
+        if isinstance(other, int) or isinstance(other, float):
+            return MultivariateData(self.data * other)
+        elif isinstance(other, MultivariateData):
+            if self.p == other.n:
+                return MultivariateData(np.matmul(self.data, other.data))
+            else:
+                raise ValueError("Dimension does not match.")
+        elif isinstance(other, np.ndarray):
+            return MultivariateData(np.matmul(self.data, other))
+        else:
+            raise TypeError("Unsupported operation between types")
+
     def __repr__(self) -> str:
         return f"MultivariateData(SampleSize:{self.n}, Features:{self.p})"
+
+    def append(self, other, orientation: str = 'h'):
+        """Appends MultivariateData in given orientation
+
+        Args:
+            other (MultivariateData): Other multivariate object
+            orientation (str): 'h' for horizontal, 'v' for vertical
+        """
+        assert isinstance(other, MultivariateData)
+        axis = 1 if orientation == 'v' else 0
+        return MultivariateData(np.concatenate((self.data, other.data), axis=axis))
 
     def generalized_squared_distance(self) -> list:
         result = []
@@ -78,29 +118,41 @@ class MultivariateData:
 
         Args:
             mu_vector_null ([int, float]): vector of mean under the null hypothesis
-            significance (float, optional): Significance level. Defaults to 0.05.
+            alpha (float, optional): 1-alpha = Significance level. Defaults to 0.05.
             method (str, optional): Method of testing. Either 'p' or 'critical'. Defaults to "p".
         """
         significance = 1-alpha
         assert (isinstance(mu_vector_null, list)
                 or isinstance(mu_vector_null, np.ndarray))
-        assert (0 < significance < 1)
-        inv_cov = np.linalg.inv(self.covariance_matrix)
         diff = self.mean_vector - mu_vector_null
-        t_2_statistic = self.n * np.matmul(np.matmul(diff, inv_cov), diff)
-        critical_value = ((self.n - 1) * self.p)/(self.n-self.p) * \
-            f.ppf(significance, self.p, self.n - self.p)
-        f_statistic = ((self.n - self.p) * t_2_statistic) / \
-            ((self.n-1) * self.p)
-        p_value = 1 - f.cdf(f_statistic, self.p, self.n - self.p)
-        print(f"---------------------HOTELLING'S T^2 TEST----------------------")
-        print(
-            f"Null Hypothesis:\n  Mean vector {self.mean_vector}\n  is equal to {np.array(mu_vector_null)}")
-        print(f"T^2 statistic: {t_2_statistic}")
-        print(f"F statistic: {f_statistic}")
-
-        print(f"Significance: {significance}")
-
+        if self.p > 1:
+            inv_cov = np.linalg.inv(self.covariance_matrix)
+            t_2_statistic = self.n * np.matmul(np.matmul(diff, inv_cov), diff)
+            critical_value = ((self.n - 1) * self.p)/(self.n-self.p) * \
+                f.ppf(significance, self.p, self.n - self.p)
+            f_statistic = ((self.n - self.p) * t_2_statistic) / \
+                ((self.n-1) * self.p)
+            p_value = 1 - f.cdf(f_statistic, self.p, self.n - self.p)
+            print(f"---------------------HOTELLING'S T^2 TEST----------------------")
+            print(
+                f"Null Hypothesis:\n  Mean vector {self.mean_vector}\n  is equal to {np.array(mu_vector_null)}")
+            print(f"Distribution: F{(self.p, self.n-self.p)}")
+            print(f"F statistic: {f_statistic}")
+            print(f"t^2 statistic: {t_2_statistic}")
+        else:
+            print(f"---------------------      F TEST        ----------------------")
+            cov = self.covariance_matrix.max()
+            x_bar = diff.max()
+            mu = mu_vector_null[0]
+            n = self.n
+            print(
+                f"Null Hypothesis:\n  Mean {x_bar}\n  is equal to {mu}")
+            t_statistic = (x_bar - mu) / (np.sqrt(cov / n))
+            f_statistic = t_statistic ** 2
+            p_value = 1 - f.cdf(f_statistic, 1, self.n - 1)
+            print(f"Distribution: F({(1, self.n - 1)})")
+            print(f"F statistic: {f_statistic}")
+        print(f"Significance: {significance*100}%")
         if method == 'p':
             print(f"P-value: {p_value}")
         elif method == 'critical':
@@ -166,32 +218,104 @@ class MultivariateData:
             t_mean = vec.dot(self.mean_vector)
             return (t_mean - conf_width, t_mean + conf_width)
 
+    def profile_analysis(self, flat=True, c_matrix=None, alpha=0.05, method="p"):
+        if flat:
+            c_matrix = self.__flat_c_matrix()
+            transformed_data = MultivariateData(
+                np.matmul(c_matrix, self.data.T).T)
+            transformed_data.hotellings_t_test(
+                np.zeros(transformed_data.p), alpha, method)
+        else:
+            assert c_matrix is not None, "If not flat, c_matrix is required."
+            c_mat = np.array(c_matrix)
+            try:
+                _, c_mat_n_col = c_mat.shape
+            except Exception as e:
+                if isinstance(e, ValueError) & (e.args[0] == 'not enough values to unpack (expected 2, got 1)'):
+                    _, c_mat_n_col = (len(c_mat), 1)
+            transformed_array = np.matmul(c_mat, self.data.T)
+            # transformed_data = np.reshape(transformed_array , (len(transformed_array),c_mat_n_col))
+            transformed_data = transformed_array.T
+            transformed_multivar_data = MultivariateData(transformed_data)
+            transformed_multivar_data.hotellings_t_test(
+                [0]*len(c_mat), alpha, method)
+        return
+
+    def __flat_c_matrix(self):
+        minus_identity_matrix = -np.identity(self.p)
+        col_ones = np.ones((self.p, 1))
+        return np.hstack((col_ones, minus_identity_matrix))[:self.p-1, :self.p]
+
 
 if __name__ == "__main__":
     # import data
-    college_dat = pd.read_csv(
-        "college.DAT", delim_whitespace=True, header=None)
-    college_dat.columns = ["ssh", "vrbl", "sci"]
+    stiff_df = pd.read_csv(
+        'stiff.DAT',
+        header=None,
+        index_col=False,
+        delim_whitespace=True)
+    stiff_df.columns = ['x1', 'x2', 'x3', 'x4', 'd2']
+    stiff = MultivariateData(stiff_df.iloc[:, 0:4])
+    # stiff.qqplot(terminal=True)
 
-    # initialize class
-    cd = MultivariateData(college_dat)
+# 2 a
+    stiff.profile_analysis(flat=True, alpha=0.05)
 
-    # perform test
-    cd.hotellings_t_test([500, 50, 30], method='critical')
-    cd.hotellings_t_test([520, 53, 25], method='critical')
-    cd.hotellings_t_test([500, 50, 30], method='p')
-    cd.hotellings_t_test([520, 53, 25], method='p')
+# 2 b
+    # we rejected the flat case in the above question.
+    c_mat = np.array(
+        [
+            [1, -2, 1, 0],
+            [0, 1, -2, 1],
+        ]
+    )
+    stiff.profile_analysis(flat=False, c_matrix=c_mat)
 
-    pprint.pprint(cd.confidence_ellipsoid_info())
-    print(cd.simultaneous_confidence_interval([1, -2, 1]))
+# 2 c
 
+    # redoing 2 a
+    from statsmodels.stats import multivariate as mv
+    print(mv.test_mvmean(
+        pd.concat([
+            stiff_df['x1'] - stiff_df['x2'],
+            stiff_df['x2'] - stiff_df['x3'],
+            stiff_df['x3'] - stiff_df['x4'],
+        ], axis=1)
+    ))
+
+    # redoing 2 b
+    print(mv.test_mvmean(
+        pd.concat([
+            stiff_df['x1'] - 2*stiff_df['x2'] + stiff_df['x3'],
+            stiff_df['x2'] - 2*stiff_df['x3'] + stiff_df['x4'],
+        ], axis=1)
+    ))
+
+# 3.
+# a.
     # import data
-    stiff = pd.read_csv('stiff.DAT',
-                        header=None, delim_whitespace=True)
-    stiff.columns = ['x1', 'x2', 'x3', 'x4', 'x5']
+    lumber_df = pd.read_csv(
+        'lumber.dat',
+        header=None,
+        index_col=False,
+        delim_whitespace=True)
+    lumber_df.columns = ['x1', 'x2']
+    lumber_sample_first = lumber_df[:15]
+    lumber_sample_second = lumber_df[15:]
+    lumber = MultivariateData(lumber_df)
+    lumber_s1 = MultivariateData(lumber_sample_first)
+    lumber_s2 = MultivariateData(lumber_sample_second)
+    lumber_subtracted = lumber_s1 - lumber_s2
+    lumber_subtracted.hotellings_t_test([0, 0])
+# b.
+    pprint.pprint({3: 'b'})
+    pprint.pprint(lumber_subtracted.simultaneous_confidence_interval([1, 0]))
 
-    stf = MultivariateData(stiff)
-    stf.qqplot(True)
-    print(stf.simultaneous_confidence_interval([1, 2, -1, -2, 0]))
-    print(stf.simultaneous_confidence_interval(
-        [1, 2, -1, -2, 0], large_sample=True))
+# c.
+    pprint.pprint({3: 'c'})
+    c_mat = np.array([
+        [1, 0, -1, 0],
+        [0, 1, 0, -1],
+    ])
+    lumber_concat = lumber_s1.append(lumber_s2, 'v')
+    lumber_concat.profile_analysis(flat=False, c_matrix=c_mat)
