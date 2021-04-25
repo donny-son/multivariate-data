@@ -1,9 +1,15 @@
-from dataclasses import dataclass
+#  _____                                _       _____
+# |  __ \                              | |     / ____|
+# | |  | | ___  _ __   __ _  ___   ___ | | __ | (___   ___  _ __
+# | |  | |/ _ \| '_ \ / _` |/ _ \ / _ \| |/ /  \___ \ / _ \| '_ \
+# | |__| | (_) | | | | (_| | (_) | (_) |   <   ____) | (_) | | | |
+# |_____/ \___/|_| |_|\__, |\___/ \___/|_|\_\ |_____/ \___/|_| |_|
+#                      __/ |
+#                     |___/
+
 import numpy as np
-import pandas as pd
 from scipy.stats import chi2, f, t
 import matplotlib.pyplot as plt
-import pprint
 try:
     import termplotlib as tpl
 except Exception as e:
@@ -245,87 +251,3 @@ class MultivariateData:
         minus_identity_matrix = -np.identity(self.p)
         col_ones = np.ones((self.p, 1))
         return np.hstack((col_ones, minus_identity_matrix))[:self.p-1, :self.p]
-
-def mean_comparison(multivardata1: MultivariateData, multivardata2: MultivariateData, no_test=False,alpha=0.05):
-    """
-    Compare means between Multivariate Data from two populations
-
-    params:
-        multivardata1: MultivariateData from first population
-        multivardata2: MultivariateData from second population
-        alpha: 1-significant level
-        return_constant: return const if true 
-            bool
-    result:
-        float: f-statistic value
-        tuple: (int, int) 
-        returns: miscalaeneous parameters
-    """
-    assert isinstance(multivardata1, MultivariateData)
-    assert isinstance(multivardata2, MultivariateData)
-    assert multivardata1.p == multivardata2.p, f"Dimension Error: {multivardata1.p} != {multivardata2.p}"
-
-    results = {}
-    significance = 1-alpha
-    n1 = multivardata1.n; results['n1']=n1
-    n2 = multivardata2.n; results['n2']=n2
-    p = multivardata1.p; results['p']=p
-    mean1 = multivardata1.mean_vector
-    mean2 = multivardata2.mean_vector
-    mean_diff = mean1 - mean2
-    cov1 = multivardata1.covariance_matrix
-    cov2 = multivardata2.covariance_matrix
-    s_p = ((n1-1)*cov1 + (n2-1)*cov2) / (n1 + n2 -2); results['s_p']=s_p
-    t_sqrd = ((n1 * n2) / (n1 + n2)) *  np.matmul(np.matmul(mean_diff, np.linalg.inv(s_p)), mean_diff)
-    const = (n1 + n2 - p - 1) / (p*(n1 + n2 -2))
-    f_statistic = const * t_sqrd
-    deg_free = (p, n1 + n2 -p - 1)
-    c_sqrd = 1/const * f.cdf(significance, deg_free[0], deg_free[1]); results['c_sqrd']=c_sqrd
-    if not no_test:
-        print(f"---------------------HOTELLING'S T^2 TEST----------------------")
-        print(f"Null Hypothesis:\n  Mean vector {mean1}\n  is equal to {mean2}")
-        print(f"Distribution: F{deg_free}")
-        print(f"F statistic: {f_statistic}")
-        p_value = 1 - f.cdf(f_statistic, deg_free[0], deg_free[1])
-        print(f"Significance: {significance*100}%")
-        print(f"P-value: {p_value}")
-        if p_value < alpha:
-            print(f"Conclusion: REJECT the null hypothesis")
-        else:
-            print(f"Conclusion: DO NOT reject the null hypothesis")
-        print(f"---------------------------------------------------------------")
-    return f_statistic, deg_free, results
-
-
-def ellipsoid_info(m1: MultivariateData, m2: MultivariateData, alpha=0.05):
-    """
-    returns ellipsoid information for two multivariate data samples from separate populations
-
-    params:
-        m1: MultivariateData from first population
-        m2: MultivariateData from second population
-        alpha: 1-significance level
-
-    return:
-        dict: contains axis and length information. Degree of freedom is derived from mean_comparison
-        Example {
-            "axis": (floats...),
-            "length": (floats...)
-        }
-    """
-        _,_, params = mean_comparison(m1, m2, no_test=True, alpha=alpha)
-        n1 = params['n1']
-        n2 = params['n2']
-        s_p = params['s_p']
-        c_sqrd = params['c_sqrd']
-        result = {}
-        significance = 1-alpha
-        eigenvalues, eigenvectors = np.linalg.eig(s_p)
-        for i, lmbda in enumerate(eigenvalues):
-            conf_half_len = np.sqrt(lmbda) * np.sqrt((1/n1 + 1/n2) * c_sqrd)
-            conf_axe_abs = conf_half_len * eigenvectors[i]
-            result[i] = {
-                "axis": conf_axe_abs,
-                "length": conf_half_len * 2
-            }
-        return result

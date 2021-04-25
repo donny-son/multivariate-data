@@ -6,18 +6,9 @@
 # |_____/ \___/|_| |_|\__, |\___/ \___/|_|\_\ |_____/ \___/|_| |_|
 #                      __/ |
 #                     |___/
-
 import numpy as np
-import pandas as pd
 from scipy.stats import chi2, f, t
-import matplotlib.pyplot as plt
-import pprint
 from Multivar import MultivariateData
-try:
-    import termplotlib as tpl
-except Exception as e:
-    NO_TERMPLOT = True
-    print(f"termploblib is not installed.\nUsing matplotlib as default.")
 
 
 def two_population_mean_comparison(multivardata1: MultivariateData, multivardata2: MultivariateData, test_only=False, alpha=0.05):
@@ -28,11 +19,11 @@ def two_population_mean_comparison(multivardata1: MultivariateData, multivardata
         multivardata1: MultivariateData from first population
         multivardata2: MultivariateData from second population
         alpha: 1-significant level
-        return_constant: return const if true 
+        return_constant: return const if true
             bool
     result:
         float: f-statistic value
-        tuple: (int, int) 
+        tuple: (int, int)
         returns: miscalaeneous parameters
     """
     assert isinstance(multivardata1, MultivariateData)
@@ -245,6 +236,8 @@ def two_population_profile_analysis(m1: MultivariateData, m2: MultivariateData, 
 
 
 if __name__ == "__main__":
+    import pprint
+    import pandas as pd
     turtle_df = pd.read_csv(
         'turtle.dat',
         header=None,
@@ -255,5 +248,4 @@ if __name__ == "__main__":
         turtle_df[turtle_df['gender'] == 'female'].iloc[:, 0:3])
     mal = MultivariateData(
         turtle_df[turtle_df['gender'] == 'male'].iloc[:, 0:3])
-
     two_population_profile_analysis(fem, mal, method="coincident")
